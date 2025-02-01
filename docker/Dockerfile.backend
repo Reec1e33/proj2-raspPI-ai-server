@@ -1,0 +1,20 @@
+# docker/Dockerfile.backend
+FROM python:3.9-slim
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements and install
+COPY backend/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire backend folder
+COPY backend/ /app/backend
+COPY monitor/ /app/monitor
+
+# If your TFLite model is inside backend/, it's already copied
+# Expose port 5000
+EXPOSE 5000
+
+# Command to run the Flask app
+CMD ["python", "backend/app.py"]

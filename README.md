@@ -57,3 +57,9 @@ proj2-raspPI-ai-server/
 │   └─ ...
 └─ .github/workflows/       # GitHub Actions CI/CD pipelines
     └─ ci.yml
+## Deployment
+
+### Frontend
+1. Build the image:
+   ```bash
+   docker build -t reec1e33/ai-frontend:latest -f docker/Dockerfile.frontend .
