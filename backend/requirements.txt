@@ -1,0 +1,4 @@
+Flask==2.2.5
+# FastAPI alternative: "fastapi" and "uvicorn"
+# If you use TFLite inside the backend, you might also specify:
+# tflite-runtime  # but typically installed outside or in a venv
