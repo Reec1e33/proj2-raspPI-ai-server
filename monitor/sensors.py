@@ -17,7 +17,10 @@ def get_cpu_temp():
         # Return a mock temperature if not on a Pi or command fails
         return round(random.uniform(30.0, 60.0), 2)
 
-def get_disk_usage():
+def get_disk_usage():sudo apt update && sudo apt install -y python3 python3-pip
+pip install flask psutil
+
+
     """
     Returns the percentage of disk usage on root partition.
     """

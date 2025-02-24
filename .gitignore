@@ -1,0 +1,28 @@
+# Python-related files
+# Virtual environment
+venv/
+env/
+
+# Compiled Python files
+__pycache__/
+*.py[cod]
+
+# Log files and temporary files
+*.log
+*.tmp
+*.swp
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Node.js dependencies (if applicable)
+node_modules/
+package-lock.json
+
+# IDE and editor settings
+.vscode/
+.idea/
+
+# System service files
+*.service
