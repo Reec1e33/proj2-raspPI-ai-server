@@ -26,3 +26,5 @@ package-lock.json
 
 # System service files
 *.service
+node_modules/
+frontend/node_modules/
