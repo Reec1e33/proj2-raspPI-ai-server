@@ -1,0 +1,18 @@
+# Build context = repository root: only the gateway image uses it
+# (docker build -f deploy/nginx/Dockerfile .). BuildKit reads
+# deploy/nginx/Dockerfile.dockerignore instead of this file; this copy of the
+# same allow-list covers the legacy builder (DOCKER_BUILDKIT=0).
+# The agent and api images use their own contexts and .dockerignore files.
+*
+!web/
+!deploy/nginx/
+
+# Host-built artefacts (node_modules holds host-OS binaries) and local secrets.
+web/node_modules
+web/dist
+web/coverage
+web/*.tsbuildinfo
+deploy/nginx/certs
+deploy/nginx/acme
+deploy/nginx/htpasswd*
+**/.DS_Store

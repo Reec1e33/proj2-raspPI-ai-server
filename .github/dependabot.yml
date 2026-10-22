@@ -1,0 +1,89 @@
+# Weekly dependency updates. Minor and patch updates arrive as one grouped PR
+# per ecosystem; major updates arrive one PR each. CI checks every PR.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /agent
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps(agent)
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directory: /api
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps(api)
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm # pnpm-lock.yaml
+    directory: /web
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps(web)
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # typescript-eslint supports TypeScript < 6.1 only (see web/package.json).
+      - dependency-name: typescript
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      # The runtime is Node 22 (CI and the gateway build stage).
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker
+    directories: [/agent, /api, /deploy/nginx]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps(docker)
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # A new Go or Python release line changes CI and the code too: do it by hand.
+      - dependency-name: golang
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
+
+  - package-ecosystem: docker-compose # observability and Ollama images in deploy/
+    directory: /deploy
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps(deploy)
+    groups:
+      compose-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps(ci)
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
