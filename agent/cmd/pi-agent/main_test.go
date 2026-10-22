@@ -180,6 +180,9 @@ func TestRunDemo(t *testing.T) {
 		}
 	}
 
+	// The transport can hold a spare connection that never sent a request.
+	// Shutdown waits up to 5 s for such StateNew connections, so close it here.
+	http.DefaultTransport.(*http.Transport).CloseIdleConnections()
 	cancel()
 	select {
 	case err := <-done:
