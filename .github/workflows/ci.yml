@@ -23,11 +23,11 @@ defaults:
     shell: bash
 
 env:
-  # setup-go would install exactly go.mod's `go 1.25.0`, which govulncheck
-  # flags with 25 standard-library vulnerabilities; pin the latest patch.
-  GO_VERSION: "1.25.14"
-  STATICCHECK_VERSION: "2026.1" # newest release that supports Go 1.25; keep in sync with agent/Makefile
-  GOVULNCHECK_VERSION: "v1.7.0" # newest release that builds with Go 1.25
+  # setup-go would install exactly go.mod's `go 1.27.0`; pin the latest patch so
+  # govulncheck does not flag standard-library fixes that are already released.
+  GO_VERSION: "1.27.3"
+  STATICCHECK_VERSION: "2026.2.2" # keep in sync with agent/Makefile
+  GOVULNCHECK_VERSION: "v1.9.0"
   UV_VERSION: "0.12.22" # same as the uv image in api/Dockerfile
   NODE_VERSION: "22"
   SHELLCHECK_VERSION: "v0.11.0"

@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 IMAGE   ?= picloud-agent
-STATICCHECK_VERSION ?= 2026.1
+STATICCHECK_VERSION ?= 2026.2.2
 
 .PHONY: all build test cover lint cross run-demo docker clean
 

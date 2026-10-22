@@ -5,7 +5,7 @@ a multi-provider AI gateway that reads the live telemetry of the Pi.
 
 [![CI](https://github.com/Reec1e33/proj2-raspPI-ai-server/actions/workflows/ci.yml/badge.svg)](https://github.com/Reec1e33/proj2-raspPI-ai-server/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
+![Go 1.27](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![TypeScript 6.0](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)
 
@@ -109,7 +109,7 @@ the trust boundaries and the failure modes.
 | --- | --- |
 | Host | Raspberry Pi OS Lite 64-bit (Debian 12 or 13), UFW, fail2ban, unattended-upgrades, NetworkManager, ddclient, journald |
 | Provisioning | Bash 4.4+, ShellCheck |
-| Agent | Go 1.25, `prometheus/client_golang`, distroless static image |
+| Agent | Go 1.27, `prometheus/client_golang`, distroless static image |
 | API | Python 3.12, FastAPI, uvicorn, pydantic, Anthropic and OpenAI SDKs, uv |
 | Web | React 19, TypeScript 6.0, Vite 8, Tailwind CSS 4, Recharts 3, Vitest |
 | Gateway | nginx 1.30 (unprivileged image), TLS 1.2/1.3, HTTP/2 |

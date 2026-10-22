@@ -2,7 +2,7 @@
 
 # Build on the native platform and cross-compile for the target. Go needs
 # no emulation for this, so multi-arch builds stay fast.
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./

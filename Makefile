@@ -38,7 +38,7 @@ test: agent-test api-test web-test infra-test deploy-test ## Run every test suit
 build: agent-build web-build ## Build bin/pi-agent and web/dist
 
 .PHONY: vuln
-vuln: ## Scan the agent with govulncheck (CI pins Go 1.25.14)
+vuln: ## Scan the agent with govulncheck (CI pins Go 1.27.3)
 	cd agent && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 ##@ Components

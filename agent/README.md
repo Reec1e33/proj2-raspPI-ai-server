@@ -232,7 +232,7 @@ goes through the same delta calculations as real data.
 
 ## Development
 
-You need Go 1.25 or later.
+You need Go 1.27 or later.
 
 | Command      | Action                                                         |
 | ------------ | -------------------------------------------------------------- |

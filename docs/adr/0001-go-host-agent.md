@@ -33,7 +33,7 @@ snapshot for the API.
 
 ## Decision
 
-Write `pi-agent` in Go 1.25. The only direct dependency is
+Write `pi-agent` in Go (1.27 at present). The only direct dependency is
 `prometheus/client_golang`.
 
 - A background sampler reads the sources at a fixed interval (2 s). The HTTP

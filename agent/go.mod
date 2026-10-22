@@ -1,6 +1,6 @@
 module github.com/Reec1e33/proj2-raspPI-ai-server/agent
 
-go 1.25.0
+go 1.27.0
 
 require github.com/prometheus/client_golang v1.24.1
 
