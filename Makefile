@@ -7,7 +7,7 @@ SHELL := bash
 .DEFAULT_GOAL := help
 MAKEFLAGS += --no-print-directory
 
-GOVULNCHECK_VERSION := v1.7.0
+GOVULNCHECK_VERSION := v1.9.0
 SHELL_SCRIPTS := infra/bootstrap.sh infra/verify.sh \
 	$(wildcard infra/lib/*.sh infra/modules/*.sh infra/tests/*.sh deploy/scripts/*.sh)
 COMPOSE := docker compose -f deploy/docker-compose.yml --env-file deploy/.env.example
