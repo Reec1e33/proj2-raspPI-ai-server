@@ -1,8 +1,7 @@
 # Architecture decision records
 
-Each record gives one design decision, the context of the decision, and its
-consequences. Do not change an accepted record. If the decision changes, write
-a new record that replaces it.
+Why things are the way they are. Accepted records don't get edited. If a
+decision changes, write a new record that supersedes the old one.
 
 | ADR | Decision | Status | Date |
 | --- | --- | --- | --- |
@@ -14,9 +13,6 @@ a new record that replaces it.
 | [0006](0006-basic-auth-and-api-key.md) | Use nginx basic auth at the gateway and an optional X-API-Key at the API | Accepted | 2026-10-02 |
 | [0007](0007-server-sent-events.md) | Use Server-Sent Events for live telemetry and chat | Accepted | 2026-10-02 |
 
-## Add a record
-
-1. Copy the newest record to `NNNN-short-title.md` with the next number.
-2. Write these sections: Context, Decision, Consequences.
-3. Set the status to `Proposed`. Change it to `Accepted` when the code agrees.
-4. Add a row to the table above.
+To add one, copy the newest record to `NNNN-short-title.md` with the next
+number, fill in Context, Decision, and Consequences, and add a row here. Start
+it as `Proposed` and flip it to `Accepted` once the code matches.
