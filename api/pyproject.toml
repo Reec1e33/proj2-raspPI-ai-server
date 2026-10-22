@@ -1,0 +1,72 @@
+[project]
+name = "picloud-api"
+dynamic = ["version"]
+description = "PiCloud AI gateway and system API: multi-provider LLM chat with live Raspberry Pi telemetry."
+readme = "README.md"
+authors = [{ name = "Reece Roskam" }]
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=1.11,<2",
+    "fastapi>=0.142",
+    "httpx2>=2.13",
+    "openai>=3.24,<4",
+    "prometheus-client>=0.26",
+    "pydantic>=2.13",
+    "pydantic-settings>=2.15",
+    "uvicorn>=0.54",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/picloud_api/__init__.py"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "pytest-cov>=7.1",
+    "respx>=0.23",
+    "ruff>=0.16",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "B", "UP", "SIM", "C4", "RUF", "ASYNC",
+    "S", "PT", "RET", "BLE", "TID", "PTH", "PIE", "T20",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+# The SDKs use httpx2; aliasing httpx -> httpx2 before respx loads lets respx mock their traffic.
+addopts = ["-p", "tests._alias_httpx", "--strict-markers", "--cov=picloud_api", "--cov-report=term-missing"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+branch = true
+source = ["picloud_api"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "\\.\\.\\.$"]
