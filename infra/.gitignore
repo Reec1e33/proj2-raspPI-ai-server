@@ -1,0 +1,5 @@
+# Local configuration; it can hold secrets.
+config.env
+
+# The repository root ignores *.service (legacy rule); keep the unit template.
+!files/systemd/picloud.service

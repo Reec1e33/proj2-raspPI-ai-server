@@ -1,0 +1,20 @@
+# Managed by PiCloud infra (infra/modules/95-picloud.sh). Local edits are overwritten.
+[Unit]
+Description=PiCloud stack (docker compose)
+Documentation=https://github.com/Reec1e33/proj2-raspPI-ai-server
+# Wants= (not Requires=): a restart of docker.service must not stop the stack.
+# With live-restore the containers keep running while the daemon restarts.
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{PICLOUD_DIR}}/deploy
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+# The first start can pull or build images for a long time.
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

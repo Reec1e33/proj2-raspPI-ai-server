@@ -1,0 +1,6 @@
+// Managed by PiCloud infra (infra/modules/50-updates.sh). Local edits are overwritten.
+// Refresh package lists and run unattended-upgrade once a day; clean the
+// package cache once a week.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";

@@ -1,0 +1,8 @@
+# Managed by PiCloud infra (infra/modules/90-docker.sh). Local edits are overwritten.
+# Official Docker CE repository (https://docs.docker.com/engine/install/debian/).
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: {{DISTRO_CODENAME}}
+Components: stable
+Architectures: {{DEB_ARCH}}
+Signed-By: /etc/apt/keyrings/docker.asc

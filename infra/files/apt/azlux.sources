@@ -1,0 +1,7 @@
+# Managed by PiCloud infra (infra/modules/70-logging.sh). Local edits are overwritten.
+# azlux repository for log2ram (https://github.com/azlux/log2ram).
+Types: deb
+URIs: https://packages.azlux.fr/debian
+Suites: {{DISTRO_CODENAME}}
+Components: main
+Signed-By: /etc/apt/keyrings/azlux.gpg

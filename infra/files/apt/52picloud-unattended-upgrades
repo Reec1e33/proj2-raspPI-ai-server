@@ -1,0 +1,28 @@
+// Managed by PiCloud infra (infra/modules/50-updates.sh). Local edits are overwritten.
+// APT reads this file after the distro's 50unattended-upgrades, so it wins.
+// ${distro_codename} is expanded by unattended-upgrades (bookworm, trixie, ...).
+
+// Replace the distro origin lists with exactly the archives below.
+#clear Unattended-Upgrade::Allowed-Origins;
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Origins-Pattern {
+        // Debian stable point releases and stable-updates.
+        "origin=Debian,codename=${distro_codename},label=Debian";
+        "origin=Debian,codename=${distro_codename}-updates,label=Debian";
+        // Debian security archive.
+        "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+        // Raspberry Pi archive (kernel, firmware, Pi tools) on Raspberry Pi OS.
+        "origin=Raspberry Pi Foundation,codename=${distro_codename},label=Raspberry Pi Foundation";
+{{UU_DOCKER_ORIGIN}}
+};
+
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Reboot (only when a package asks for it) at a quiet time.
+Unattended-Upgrade::Automatic-Reboot "{{UU_AUTO_REBOOT}}";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "{{AUTO_REBOOT_TIME}}";
+
+{{UU_MAIL_CONFIG}}

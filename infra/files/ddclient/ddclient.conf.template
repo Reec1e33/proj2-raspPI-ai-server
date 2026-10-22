@@ -1,0 +1,8 @@
+# Managed by PiCloud infra (infra/modules/65-ddns.sh). Local edits are overwritten.
+# Mode 0600 root:root: this file holds DDNS credentials.
+daemon=300
+syslog=yes
+ssl=yes
+usev4=webv4, webv4=ipify-ipv4
+
+{{DDNS_PROVIDER_CONFIG}}
