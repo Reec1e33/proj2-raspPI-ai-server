@@ -1,0 +1,32 @@
+# Managed by PiCloud infra (infra/modules/40-fail2ban.sh). Local edits are overwritten.
+# fail2ban reads jail.conf, then jail.d/*.conf, then this file, so it wins over
+# the distro defaults.
+
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1
+bantime = 1h
+findtime = 10m
+maxretry = 5
+# Repeat offenders get longer bans: 1h, 2h, 4h, ... capped at 4 weeks.
+bantime.increment = true
+bantime.maxtime = 4w
+
+[sshd]
+enabled = true
+port = {{SSH_PORT}}
+mode = aggressive
+# Debian 12+ has no rsyslog by default, so read sshd messages from the journal
+# (needs python3-systemd). Match Debian's unit name (ssh.service) and both
+# process names (OpenSSH >= 9.8 logs auth events as sshd-session).
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd + _COMM=sshd-session
+
+# Ban hosts that keep getting banned, on all ports, for a week.
+[recidive]
+enabled = true
+backend = auto
+logpath = /var/log/fail2ban.log
+banaction = %(banaction_allports)s
+bantime = 1w
+findtime = 1d
+maxretry = 3

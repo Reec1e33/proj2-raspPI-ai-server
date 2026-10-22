@@ -1,0 +1,5 @@
+# Resolve `# shellcheck source=` paths from each script's directory, and find
+# lib/ files (common.sh sources config.sh) from the root, modules/ and tests/.
+source-path=SCRIPTDIR
+source-path=SCRIPTDIR/lib
+source-path=SCRIPTDIR/../lib

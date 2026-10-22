@@ -1,0 +1,25 @@
+# Fixed UIDs: dashboards reference these datasources by uid ("prometheus", "loki").
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Matches scrape_interval, so $__rate_interval is computed correctly.
+      timeInterval: 15s
+      httpMethod: POST
+      prometheusType: Prometheus
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000

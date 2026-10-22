@@ -1,0 +1,321 @@
+# PiCloud: single-node stack for a Raspberry Pi 4/5 (arm64, 4-8 GB).
+#
+#   cp .env.example .env    # then edit it; see README.md
+#   docker compose up -d
+#
+# Only the gateway publishes public ports (80/443). Prometheus listens on
+# 127.0.0.1:9090 for SSH tunnels. Memory limits default to an 8 GB Pi; the
+# 4 GB values are in .env.example. Images built by CI are pulled from GHCR;
+# `docker compose build` builds the same images from this repository.
+name: picloud
+
+x-service: &service
+  restart: unless-stopped
+  networks: [picloud]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+x-healthcheck: &healthcheck
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
+  start_interval: 5s
+
+services:
+  gateway:
+    <<: *service
+    image: ghcr.io/reec1e33/picloud-gateway:${PICLOUD_VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: deploy/nginx/Dockerfile
+    networks:
+      picloud:
+        # Static address outside the dynamic ip_range: the api trusts
+        # X-Forwarded-For from this address only (FORWARDED_ALLOW_IPS).
+        ipv4_address: &gateway_ip 172.30.0.10
+    ports:
+      - "80:8080"
+      - "443:8443"
+    environment:
+      SERVER_NAME: ${SERVER_NAME:-localhost}
+    volumes:
+      - type: bind
+        source: ./nginx/certs
+        target: /etc/nginx/certs
+        read_only: true
+      - type: bind
+        source: ./nginx/htpasswd
+        target: /etc/nginx/htpasswd
+        read_only: true
+      - ./nginx/acme:/var/www/acme:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,uid=101,gid=101,mode=0700
+      # The image's entrypoint renders templates/*.template into conf.d at start.
+      - /etc/nginx/conf.d:size=1m,uid=101,gid=101,mode=0755
+    # Start order only: nginx resolves upstreams per request (`resolve`), so the
+    # SPA and Grafana stay reachable even when the api is unhealthy; /api/
+    # answers 502 until the api is up.
+    depends_on:
+      api:
+        condition: service_started
+      grafana:
+        condition: service_started
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8081/healthz"]
+    mem_limit: 128m
+    cpus: 0.5
+
+  api:
+    <<: *service
+    image: ghcr.io/reec1e33/picloud-api:${PICLOUD_VERSION:-latest}
+    build: ../api
+    # The api's defaults already point at the compose services (agent:9110,
+    # ollama:11434). Variables without a value pass through from .env and stay
+    # unset when .env does not define them.
+    environment:
+      FORWARDED_ALLOW_IPS: *gateway_ip
+      PICLOUD_PROVIDER_ORDER:
+      PICLOUD_OLLAMA_URL:
+      PICLOUD_OLLAMA_MODEL:
+      ANTHROPIC_API_KEY:
+      PICLOUD_ANTHROPIC_MODEL:
+      OPENAI_API_KEY:
+      PICLOUD_OPENAI_BASE_URL:
+      PICLOUD_OPENAI_MODEL:
+      PICLOUD_API_KEY:
+      PICLOUD_CHAT_RATE_LIMIT:
+      PICLOUD_MAX_TOKENS:
+      PICLOUD_REQUEST_TIMEOUT_S:
+      PICLOUD_STREAM_INTERVAL_S:
+      PICLOUD_CORS_ORIGINS:
+      PICLOUD_LOG_LEVEL:
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    depends_on:
+      agent:
+        condition: service_started
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+    mem_limit: 256m
+    cpus: 1.0
+
+  agent:
+    <<: *service
+    image: ghcr.io/reec1e33/picloud-agent:${PICLOUD_VERSION:-latest}
+    build: ../agent
+    # Read-only host mounts: the agent reads the host's /proc, /sys and
+    # filesystems instead of the container's. No 'pid: host': the bind-mounted
+    # procfs resolves PIDs in the host's PID namespace, so /host/proc/1/net/dev
+    # is host init's network namespace (verified readable as UID 65532).
+    environment:
+      PI_AGENT_PROCFS: /host/proc
+      PI_AGENT_SYSFS: /host/sys
+      PI_AGENT_ROOTFS: /host/root
+      PI_AGENT_MOUNTS:
+      PI_AGENT_INTERVAL:
+      PI_AGENT_LOG_LEVEL:
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    # Raspberry Pi kernels 6.12+ have no get_throttled file in sysfs, so the
+    # agent asks the firmware through the mailbox device, as vcgencmd does. It
+    # tries /dev/vcio_gencmd, then /dev/vcio, and reports throttling as
+    # unsupported when neither is present. Docker refuses to start a container
+    # whose device is missing, so the default is /dev/vcio: every Raspberry Pi
+    # kernel creates it (CONFIG_BCM_VCIO=y). See README.md ("Throttle state")
+    # for /dev/vcio_gencmd, and use /dev/null on a host that is not a Pi.
+    devices:
+      - ${PI_AGENT_MAILBOX_DEVICE:-/dev/vcio}:${PI_AGENT_MAILBOX_DEVICE:-/dev/vcio}:r
+    group_add: ["44"] # video: the group of the mailbox devices on Raspberry Pi OS
+    read_only: true
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "/usr/local/bin/pi-agent", "healthcheck"]
+    mem_limit: 64m
+    cpus: 0.25
+
+  ollama:
+    <<: *service
+    image: ollama/ollama:0.35.0
+    # Optional: enable with COMPOSE_PROFILES=ollama in .env (default on an 8 GB Pi).
+    profiles: [ollama]
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+    # Root in the container, all capabilities dropped. Models and the key pair
+    # live in the volume, so the root filesystem can stay read-only.
+    volumes:
+      - ollama-models:/root/.ollama
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "ollama", "list"]
+    mem_limit: ${MEM_LIMIT_OLLAMA:-4g}
+    # Leave one core free for SSH, the agent and the rest of the stack.
+    cpus: 3.0
+
+  prometheus:
+    <<: *service
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-2GB}
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    read_only: true
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+    mem_limit: ${MEM_LIMIT_PROMETHEUS:-512m}
+    cpus: 1.0
+
+  grafana:
+    <<: *service
+    image: grafana/grafana:13.2.3
+    environment:
+      GF_SERVER_ROOT_URL: https://${SERVER_NAME:-localhost}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in deploy/.env}
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "true"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      # The gateway's basic auth already guards /grafana/: anonymous users get
+      # read-only Viewer access, and the admin account is needed only to edit.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_ANONYMOUS_HIDE_VERSION: "true"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/picloud-overview.json
+      # No plugin downloads at start-up: the dashboard uses only the bundled
+      # Prometheus/Loki datasources and core panels (and the image is read-only).
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      # Each bundled datasource with a backend runs as its own process (~20 MB
+      # each). Load only Prometheus and Loki: this saves ~200 MB on the Pi.
+      GF_PLUGINS_DISABLE_PLUGINS: elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,mssql,mysql,opentsdb,stackdriver,tempo,zipkin
+      GF_LOG_MODE: console
+      # Go does not see the cgroup limit. Once the dashboard is in use, Grafana's
+      # heap grows past 350 MiB and, without this, the container sits at its
+      # memory limit. Keep MEM_LIMIT_GRAFANA at 512m or more.
+      GOMEMLIMIT: 400MiB
+    volumes:
+      - grafana-data:/var/lib/grafana
+      # Mount the two subdirectories only: the image's other provisioning
+      # directories (alerting, plugins) must stay visible.
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      # The first start runs the database migrations, which take minutes on an
+      # SD card. start_interval still reports "healthy" as soon as it is up.
+      start_period: 3m
+    mem_limit: ${MEM_LIMIT_GRAFANA:-512m}
+    cpus: 1.0
+
+  loki:
+    <<: *service
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/config.yml", "-config.expand-env=true"]
+    environment:
+      LOKI_RETENTION_PERIOD: ${LOKI_RETENTION_PERIOD:-168h}
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    read_only: true
+    # No healthcheck: the Loki image is distroless (no shell, wget or curl) and
+    # loki has no probe subcommand. Prometheus scrapes loki:3100 and the
+    # ObservabilityTargetDown alert fires if it stops answering.
+    mem_limit: ${MEM_LIMIT_LOKI:-384m}
+    cpus: 1.0
+
+  alloy:
+    <<: *service
+    image: grafana/alloy:v1.20.1
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      # Not the image's /var/lib/alloy/data: that directory belongs to UID 473,
+      # and root without CAP_DAC_OVERRIDE cannot write to it.
+      - --storage.path=/var/lib/picloud-alloy
+      - --disable-reporting
+      - /etc/alloy/config.alloy
+    # Root in the container, all capabilities dropped: it can read files that
+    # root owns (journal, docker.sock) but nothing else extra.
+    # docker.sock gives root-equivalent access to the Docker API even when it is
+    # mounted read-only; see README.md ("Alloy and the Docker socket").
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/picloud-alloy
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    depends_on:
+      loki:
+        condition: service_started
+    healthcheck:
+      <<: *healthcheck
+      # The image has bash but no curl/wget: send a raw HTTP request to /-/ready.
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/12345 && printf "GET /-/ready HTTP/1.0\r\n\r\n" >&3 && grep -q " 200 " <&3'
+    mem_limit: 256m
+    cpus: 0.5
+
+networks:
+  picloud:
+    ipam:
+      config:
+        # Fixed so the gateway can have a static address. Containers get
+        # dynamic addresses from ip_range only, so they never take the
+        # gateway's. Change all three (and the gateway's ipv4_address) if
+        # 172.30.0.0/24 collides with your LAN.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25
+          gateway: 172.30.0.1
+
+volumes:
+  ollama-models:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  alloy-data:

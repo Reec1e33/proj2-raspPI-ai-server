@@ -1,0 +1,41 @@
+# Prometheus for the PiCloud stack. Retention is set by command-line flags in
+# docker-compose.yml (PROMETHEUS_RETENTION_TIME / PROMETHEUS_RETENTION_SIZE).
+# Reload after an edit: docker compose kill -s SIGHUP prometheus
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+# Relative paths resolve against this file's directory (/etc/prometheus).
+rule_files:
+  - rules/*.yml
+
+scrape_configs:
+  # Host telemetry from pi-agent (pi_* metrics).
+  - job_name: agent
+    static_configs:
+      - targets: ["agent:9110"]
+
+  # AI gateway + system API (picloud_* metrics).
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  # Grafana serves from the /grafana/ sub-path; /metrics redirects to the public URL.
+  - job_name: grafana
+    metrics_path: /grafana/metrics
+    static_configs:
+      - targets: ["grafana:3000"]

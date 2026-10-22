@@ -1,0 +1,14 @@
+# Load dashboards from deploy/grafana/dashboards (mounted at /etc/grafana/dashboards).
+# Edit the JSON files in git, not in the UI: UI changes cannot be saved.
+apiVersion: 1
+
+providers:
+  - name: picloud
+    orgId: 1
+    folder: PiCloud
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

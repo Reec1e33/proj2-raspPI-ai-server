@@ -1,0 +1,120 @@
+// Grafana Alloy: ships logs to Loki.
+//   1. Docker container logs of the PiCloud compose project only, labelled by container
+//      and compose service.
+//   2. The host systemd journal (sshd, kernel/UFW, Docker, ...).
+//   3. /var/log/fail2ban.log (fail2ban writes bans to this file, not to the journal).
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
+
+// Loki rejects entries older than reject_old_samples_max_age (168h), and on its
+// first start Alloy reads each container's whole log history. Drop old lines
+// here instead of sending them to be rejected.
+loki.process "drop_old" {
+	forward_to = [loki.write.default.receiver]
+
+	stage.drop {
+		older_than          = "168h"
+		drop_counter_reason = "too_old"
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 1. Docker container logs
+// ---------------------------------------------------------------------------
+
+discovery.docker "containers" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "15s"
+
+	// Only the PiCloud stack (`name: picloud` in docker-compose.yml). The Docker
+	// API applies this filter, so logs of other containers on the same host
+	// never reach Alloy or Loki.
+	filter {
+		name   = "label"
+		values = ["com.docker.compose.project=picloud"]
+	}
+}
+
+discovery.relabel "containers" {
+	targets = []
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		target_label  = "compose_project"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_log_stream"]
+		target_label  = "stream"
+	}
+}
+
+loki.source.docker "containers" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.docker.containers.targets
+	labels        = {job = "docker"}
+	relabel_rules = discovery.relabel.containers.rules
+	forward_to    = [loki.process.drop_old.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// 2. Host systemd journal. With no `path`, Alloy reads /var/log/journal and
+//    /run/log/journal (bind-mounted read-only, with /etc/machine-id).
+// ---------------------------------------------------------------------------
+
+loki.relabel "journal" {
+	forward_to = []
+
+	// Only .service units: scopes such as session-42.scope would create a new
+	// stream per SSH login.
+	rule {
+		source_labels = ["__journal__systemd_unit"]
+		regex         = "(.+\\.service)"
+		target_label  = "unit"
+	}
+
+	rule {
+		source_labels = ["__journal_syslog_identifier"]
+		target_label  = "syslog_identifier"
+	}
+
+	rule {
+		source_labels = ["__journal_priority_keyword"]
+		target_label  = "level"
+	}
+}
+
+loki.source.journal "host" {
+	max_age       = "12h"
+	labels        = {job = "systemd-journal"}
+	relabel_rules = loki.relabel.journal.rules
+	forward_to    = [loki.process.drop_old.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// 3. fail2ban log file
+// ---------------------------------------------------------------------------
+
+local.file_match "fail2ban" {
+	path_targets = [{"__path__" = "/var/log/fail2ban.log", "job" = "fail2ban"}]
+}
+
+loki.source.file "fail2ban" {
+	targets    = local.file_match.fail2ban.targets
+	forward_to = [loki.process.drop_old.receiver]
+}
