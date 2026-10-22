@@ -1,0 +1,229 @@
+# Unit tests for rules/picloud-alerts.yml.
+# Run from deploy/prometheus: promtool test rules tests/*.yml
+# Series notation: "a+bxn" is n+1 samples a, a+b, ..., a+n*b; "ax3" repeats a 4 times.
+rule_files:
+  - ../rules/picloud-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: temperature alerts respect their thresholds and durations
+    interval: 1m
+    input_series:
+      # 0m: 70 °C, 1m-11m: 76 °C, 12m-17m: 82 °C
+      - series: 'pi_cpu_temperature_celsius{instance="agent:9110", job="agent"}'
+        values: "70 76x10 82x5"
+    alert_rule_test:
+      - eval_time: 5m # 76 °C for only 4 minutes: still pending
+        alertname: PiHighTemperature
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PiHighTemperature
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: "agent:9110", job: agent }
+            exp_annotations:
+              summary: CPU temperature above 75 °C
+              description: The CPU is at 76.0 °C. Check the fan, heatsink and airflow.
+      - eval_time: 11m # 76 °C never reaches the critical threshold
+        alertname: PiCriticalTemperature
+        exp_alerts: []
+      - eval_time: 12m # 82 °C for 0 minutes: still pending
+        alertname: PiCriticalTemperature
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: PiCriticalTemperature
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: "agent:9110", job: agent }
+            exp_annotations:
+              summary: CPU temperature above 80 °C
+              description: The CPU is at 82.0 °C. The firmware throttles the CPU from 80 °C (soft limit) to 85 °C.
+
+  - name: disk alert uses df's Use% and fires after 15 minutes
+    interval: 1m
+    input_series:
+      # /: 50 reserved blocks. 600/(600+350) = 63.2 % for 20 minutes, then
+      # 830/(830+120) = 87.4 %.
+      - series: 'pi_filesystem_used_bytes{instance="agent:9110", job="agent", mountpoint="/"}'
+        values: "600x20 830x30"
+      - series: 'pi_filesystem_avail_bytes{instance="agent:9110", job="agent", mountpoint="/"}'
+        values: "350x20 120x30"
+      # /mnt/ssd: 100 reserved blocks. 760/(760+140) = 84.4 %: no alert, although
+      # 1 - avail/size would give 86 %.
+      - series: 'pi_filesystem_used_bytes{instance="agent:9110", job="agent", mountpoint="/mnt/ssd"}'
+        values: "760x50"
+      - series: 'pi_filesystem_avail_bytes{instance="agent:9110", job="agent", mountpoint="/mnt/ssd"}'
+        values: "140x50"
+    alert_rule_test:
+      - eval_time: 20m # 63.2 % used
+        alertname: PiDiskAlmostFull
+        exp_alerts: []
+      - eval_time: 35m # 87.4 % used for 14 minutes: still pending
+        alertname: PiDiskAlmostFull
+        exp_alerts: []
+      - eval_time: 36m
+        alertname: PiDiskAlmostFull
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: "agent:9110", job: agent, mountpoint: / }
+            exp_annotations:
+              summary: Filesystem / is more than 85 % full
+              description: / is 87.4 % full. Prune Docker images (docker image prune) or reduce retention.
+
+  - name: memory pressure needs 10 minutes below 10 % available
+    interval: 1m
+    input_series:
+      - series: 'pi_memory_total_bytes{instance="agent:9110", job="agent"}'
+        values: "1000x30"
+      # 50 % available for 6 minutes, then 5 %
+      - series: 'pi_memory_available_bytes{instance="agent:9110", job="agent"}'
+        values: "500x5 50x24"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PiMemoryPressure
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: PiMemoryPressure
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: "agent:9110", job: agent }
+            exp_annotations:
+              summary: Less than 10 % of memory is available
+              description: Only 5.0 % of memory is available. Use a smaller Ollama model or lower the memory limits.
+
+  - name: throttling alerts use only the "now" flags
+    interval: 1m
+    input_series:
+      - series: 'pi_throttled{instance="agent:9110", job="agent", condition="under_voltage", scope="now"}'
+        values: "0 1x5"
+      # Throttled from 3m to 5m, then recovered.
+      - series: 'pi_throttled{instance="agent:9110", job="agent", condition="throttled", scope="now"}'
+        values: "0x2 1x2 0x5"
+      # A past event ("occurred" since boot) must not raise an alert.
+      - series: 'pi_throttled{instance="agent:9110", job="agent", condition="throttled", scope="occurred"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PiUnderVoltageNow
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: PiUnderVoltageNow
+        exp_alerts:
+          - exp_labels:
+              { severity: critical, instance: "agent:9110", job: agent, condition: under_voltage, scope: now }
+            exp_annotations:
+              summary: The power supply voltage is too low
+              description: Under-voltage can corrupt the SD card. Use the official power supply (5 V/3 A for a Pi 4, 5 V/5 A for a Pi 5).
+      - eval_time: 4m
+        alertname: PiThrottledNow
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: PiThrottledNow
+        exp_alerts:
+          - exp_labels:
+              { severity: warning, instance: "agent:9110", job: agent, condition: throttled, scope: now }
+            exp_annotations:
+              summary: The firmware is throttling the CPU
+              description: The CPU runs below its rated speed. Check the temperature and the power supply.
+      - eval_time: 6m
+        alertname: PiThrottledNow
+        exp_alerts: []
+
+  - name: agent down after 2 minutes without a scrape
+    interval: 1m
+    input_series:
+      - series: 'up{instance="agent:9110", job="agent"}'
+        values: "1 1 0x5"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AgentDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: AgentDown
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: "agent:9110", job: agent }
+            exp_annotations:
+              summary: pi-agent is down
+              description: Prometheus cannot scrape the host agent; host metrics and /api/system are unavailable.
+
+  - name: chat error rate alert fires on a sustained 50 % error rate
+    interval: 1m
+    input_series:
+      - series: 'picloud_chat_requests_total{instance="api:8000", job="api", provider="ollama", outcome="error"}'
+        values: "0+1x30"
+      - series: 'picloud_chat_requests_total{instance="api:8000", job="api", provider="ollama", outcome="success"}'
+        values: "0+1x30"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ChatErrorRateHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: More than 25 % of chat requests fail
+              description: 50% of chat requests failed in the last 10 minutes. Check the api logs and /api/providers.
+
+  - name: chat error rate alert counts requests that no provider could attempt
+    interval: 1m
+    input_series:
+      # Every circuit open: the api answers 503 and counts provider="none".
+      - series: 'picloud_chat_requests_total{instance="api:8000", job="api", provider="none", outcome="error"}'
+        values: "0+1x30"
+      - series: 'picloud_chat_requests_total{instance="api:8000", job="api", provider="ollama", outcome="success"}'
+        values: "0+1x30"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ChatErrorRateHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: More than 25 % of chat requests fail
+              description: 50% of chat requests failed in the last 10 minutes. Check the api logs and /api/providers.
+
+  - name: chat error rate alert ignores low traffic
+    interval: 1m
+    input_series:
+      # Every request fails, but only one arrives every 3 minutes (~3 per 10m).
+      - series: 'picloud_chat_requests_total{instance="api:8000", job="api", provider="ollama", outcome="error"}'
+        values: "0 0 0 1 1 1 2 2 2 3 3 3 4 4 4"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ChatErrorRateHigh
+        exp_alerts: []
+
+  - name: circuit alert fires when a circuit never closes for 5 minutes
+    interval: 1m
+    input_series:
+      # Open or half-open (probing) from 1m onwards.
+      - series: 'picloud_provider_circuit_state{instance="api:8000", job="api", provider="anthropic"}'
+        values: "0 2 2 1 2 2 2 1 2 2"
+      # Flaps but closes in between: no alert.
+      - series: 'picloud_provider_circuit_state{instance="api:8000", job="api", provider="openai"}'
+        values: "0 2 0 2 0 2 0 2 0 2"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ProviderCircuitOpen
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: ProviderCircuitOpen
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: "api:8000", job: api, provider: anthropic }
+            exp_annotations:
+              summary: The anthropic circuit breaker is open
+              description: The api skips anthropic and uses the next provider in PICLOUD_PROVIDER_ORDER.
+
+  - name: circuit alert waits 5 minutes even when the first sample is already open
+    interval: 1m
+    input_series:
+      - series: 'picloud_provider_circuit_state{instance="api:8000", job="api", provider="ollama"}'
+        values: "2 2 1 2 2 1 2"
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: ProviderCircuitOpen
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: ProviderCircuitOpen
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ProviderCircuitOpen
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: "api:8000", job: api, provider: ollama }
+            exp_annotations:
+              summary: The ollama circuit breaker is open
+              description: The api skips ollama and uses the next provider in PICLOUD_PROVIDER_ORDER.

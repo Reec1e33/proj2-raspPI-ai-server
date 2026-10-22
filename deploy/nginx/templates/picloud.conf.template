@@ -1,0 +1,123 @@
+# Rendered to /etc/nginx/conf.d/picloud.conf at container start by the image's
+# envsubst entrypoint. NGINX_ENVSUBST_FILTER limits substitution to
+# SERVER_NAME and PUBLIC_HTTPS_PORT, so nginx variables ($host, ...) are untouched.
+
+# Port suffix for the HTTP -> HTTPS redirect: empty on 443, ":8443" in dev.
+map "${PUBLIC_HTTPS_PORT}" $https_port_suffix {
+    "443"   "";
+    default ":${PUBLIC_HTTPS_PORT}";
+}
+
+# Plain HTTP (host port 80): ACME HTTP-01 challenges; everything else -> HTTPS.
+server {
+    listen 8080 default_server;
+    server_name ${SERVER_NAME};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/acme;
+        default_type text/plain;
+    }
+
+    location / {
+        return 301 https://$host$https_port_suffix$request_uri;
+    }
+}
+
+# HTTPS (host port 443): SPA, api and Grafana behind basic auth.
+server {
+    listen 8443 ssl default_server;
+    http2 on;
+    server_name ${SERVER_NAME};
+
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+
+    auth_basic "PiCloud";
+    auth_basic_user_file /etc/nginx/htpasswd;
+
+    root /usr/share/nginx/html;
+
+    # Liveness probe for external uptime checks: the only unauthenticated route.
+    # The explicit URI sends the normalised path upstream, never the client's
+    # raw one (e.g. //api/health or /x%2F..%2Fapi/health).
+    location = /api/health {
+        auth_basic off;
+        proxy_pass http://api/api/health;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+
+    location = /api/chat {
+        limit_req zone=chat burst=10 nodelay;
+        # Answer in the api's format (JSON detail and Retry-After), so that a
+        # client handles both rate limits the same way.
+        error_page 429 = @chat_rate_limited;
+        # The api accepts 50 messages of 8000 characters; in multi-byte UTF-8
+        # that is more than the global 1m limit.
+        client_max_body_size 2m;
+        proxy_pass http://api;
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_read_timeout 1h;
+    }
+
+    location @chat_rate_limited {
+        include /etc/nginx/snippets/security-headers.conf;
+        default_type application/json;
+        # The zone admits one request every 2 s after the burst is used up.
+        add_header Retry-After 2 always;
+        return 429 '{"detail":"rate limit exceeded"}\n';
+    }
+
+    # SSE (/api/system/stream) needs unbuffered proxying (proxy.conf) and a
+    # long read timeout; the api sends a ping comment every 15 s.
+    location /api/ {
+        proxy_pass http://api;
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_read_timeout 1h;
+    }
+
+    # Grafana serves from the /grafana/ sub-path. The browser's basic-auth
+    # header is stripped so Grafana does not try to log in with it.
+    location /grafana/ {
+        proxy_pass http://grafana;
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_set_header Authorization "";
+    }
+
+    # Grafana Live (websocket). proxy.conf sends no Connection header (an empty
+    # value is dropped); this one carries "upgrade" for the websocket handshake.
+    location /grafana/api/live/ {
+        proxy_pass http://grafana;
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_set_header Authorization "";
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 1h;
+    }
+
+    # Vite emits content-hashed file names under /assets/: cache them for a
+    # year. No `always`: a 404 for a missing asset must not be cached.
+    location /assets/ {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # SPA: unknown paths fall back to index.html, which must always revalidate.
+    location / {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+# Container healthcheck endpoint, reachable only from inside the container.
+server {
+    listen 127.0.0.1:8081;
+    access_log off;
+
+    location = /healthz {
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+}

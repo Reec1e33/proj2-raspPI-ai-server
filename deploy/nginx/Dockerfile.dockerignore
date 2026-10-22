@@ -1,0 +1,15 @@
+# BuildKit reads this file instead of the root .dockerignore when it builds
+# deploy/nginx/Dockerfile. Allow-list: only the SPA sources and the nginx config.
+*
+!web/
+!deploy/nginx/
+
+# Host-built artefacts (node_modules holds host-OS binaries) and local secrets.
+web/node_modules
+web/dist
+web/coverage
+web/*.tsbuildinfo
+deploy/nginx/certs
+deploy/nginx/acme
+deploy/nginx/htpasswd*
+**/.DS_Store

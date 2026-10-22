@@ -1,0 +1,119 @@
+# PiCloud alerting rules. Unit tests: deploy/prometheus/tests/picloud-alerts.test.yml
+# No Alertmanager is deployed: firing alerts show in Prometheus (/alerts) and
+# in Grafana's alert list.
+groups:
+  - name: pi-host
+    rules:
+      - alert: PiHighTemperature
+        expr: pi_cpu_temperature_celsius > 75
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: CPU temperature above 75 °C
+          description: 'The CPU is at {{ printf "%.1f" $value }} °C. Check the fan, heatsink and airflow.'
+
+      - alert: PiCriticalTemperature
+        expr: pi_cpu_temperature_celsius > 80
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: CPU temperature above 80 °C
+          description: 'The CPU is at {{ printf "%.1f" $value }} °C. The firmware throttles the CPU from 80 °C (soft limit) to 85 °C.'
+
+      - alert: PiThrottledNow
+        expr: pi_throttled{condition="throttled", scope="now"} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: The firmware is throttling the CPU
+          description: The CPU runs below its rated speed. Check the temperature and the power supply.
+
+      - alert: PiUnderVoltageNow
+        expr: pi_throttled{condition="under_voltage", scope="now"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: The power supply voltage is too low
+          description: Under-voltage can corrupt the SD card. Use the official power supply (5 V/3 A for a Pi 4, 5 V/5 A for a Pi 5).
+
+      - alert: PiDiskAlmostFull
+        # Use% as df and the agent's usage_percent compute it: blocks reserved
+        # for root count neither as used nor as available.
+        expr: pi_filesystem_used_bytes / (pi_filesystem_used_bytes + pi_filesystem_avail_bytes) * 100 > 85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Filesystem {{ $labels.mountpoint }} is more than 85 % full'
+          description: '{{ $labels.mountpoint }} is {{ printf "%.1f" $value }} % full. Prune Docker images (docker image prune) or reduce retention.'
+
+      - alert: PiMemoryPressure
+        expr: pi_memory_available_bytes / pi_memory_total_bytes * 100 < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Less than 10 % of memory is available
+          description: 'Only {{ printf "%.1f" $value }} % of memory is available. Use a smaller Ollama model or lower the memory limits.'
+
+  - name: picloud-services
+    rules:
+      - alert: AgentDown
+        expr: up{job="agent"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: pi-agent is down
+          description: Prometheus cannot scrape the host agent; host metrics and /api/system are unavailable.
+
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The PiCloud api is down
+          description: Prometheus cannot scrape the api; the dashboard and chat are unavailable.
+
+      - alert: ChatErrorRateHigh
+        # Ignore quiet periods: a ratio over fewer than 5 requests is noise.
+        expr: |
+          (
+            sum(rate(picloud_chat_requests_total{outcome="error"}[10m]))
+            /
+            sum(rate(picloud_chat_requests_total[10m]))
+          ) > 0.25
+          and
+          sum(increase(picloud_chat_requests_total[10m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 25 % of chat requests fail
+          description: '{{ $value | humanizePercentage }} of chat requests failed in the last 10 minutes. Check the api logs and /api/providers.'
+
+      - alert: ProviderCircuitOpen
+        # A failing provider alternates between open (2) and half_open (1) while
+        # requests probe it, and the gauge returns to 0 only when it closes. So
+        # "> 0 for 5m" means the circuit did not close for 5 minutes.
+        expr: picloud_provider_circuit_state > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'The {{ $labels.provider }} circuit breaker is open'
+          description: 'The api skips {{ $labels.provider }} and uses the next provider in PICLOUD_PROVIDER_ORDER.'
+
+      - alert: ObservabilityTargetDown
+        expr: up{job=~"prometheus|loki|alloy|grafana"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.job }} is down'
+          description: 'Prometheus cannot scrape {{ $labels.job }} ({{ $labels.instance }}).'

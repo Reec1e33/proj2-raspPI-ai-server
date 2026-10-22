@@ -1,0 +1,8 @@
+# Secrets and host-specific files: never commit them.
+.env
+# htpasswd.XXXXXX: the temporary file of create-htpasswd.sh.
+nginx/htpasswd*
+nginx/certs/*
+!nginx/certs/.gitkeep
+nginx/acme/*
+!nginx/acme/.gitkeep

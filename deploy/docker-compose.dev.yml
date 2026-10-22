@@ -1,0 +1,51 @@
+# Laptop override (macOS/Linux, no Raspberry Pi needed):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# Changes from the Pi stack:
+#   - builds the gateway, api and agent images from this checkout;
+#   - gateway on https://localhost:8443 (http://localhost:8080 redirects to it);
+#   - agent in demo mode: synthetic Pi data, no host mounts or firmware mailbox
+#     device;
+#   - no Ollama (PICLOUD_DEV_OLLAMA_URL can point the api at a native Ollama);
+#   - api published on 127.0.0.1:8000 for `pnpm dev` in web/;
+#   - Alloy collects container logs only (no journal on the laptop).
+# Needs !reset / !override tags: Docker Compose 2.24.4 or later.
+services:
+  gateway:
+    pull_policy: build
+    ports: !override
+      - "8080:8080"
+      - "8443:8443"
+    environment:
+      SERVER_NAME: localhost
+      PUBLIC_HTTPS_PORT: "8443"
+
+  api:
+    pull_policy: build
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      PICLOUD_OLLAMA_URL: ${PICLOUD_DEV_OLLAMA_URL:-}
+
+  agent:
+    pull_policy: build
+    volumes: !reset []
+    devices: !reset []
+    group_add: !reset []
+    environment: !override
+      PI_AGENT_DEMO: "true"
+
+  ollama:
+    # Moved to a profile that .env does not enable; opt in with --profile dev-ollama.
+    profiles: !override [dev-ollama]
+
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: https://localhost:8443/grafana/
+
+  alloy:
+    volumes: !override
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/picloud-alloy
+      - /var/run/docker.sock:/var/run/docker.sock:ro
