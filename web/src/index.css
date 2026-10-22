@@ -1,0 +1,133 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. Dark is the default; light follows prefers-color-scheme.
+ * Chart, status, and ink values come from the validated dataviz palette
+ * (series 1-2 pass CVD and contrast checks against both surfaces).
+ */
+:root {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-raised: #242422;
+  --ink: #ffffff;
+  --ink-secondary: #c3c2b7;
+  /* Muted ink (axis ticks, placeholders) keeps >= 4.5:1 on every surface. */
+  --ink-muted: #8f8d87;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgb(255 255 255 / 0.1);
+  --border-strong: rgb(255 255 255 / 0.2);
+  --accent: #1c5cab;
+  --accent-hover: #256abf;
+  --link: #86b6ef;
+  --focus: #3987e5;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --surface-raised: #f0efec;
+    --ink: #0b0b0b;
+    --ink-secondary: #52514e;
+    --ink-muted: #6b6a65;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgb(11 11 11 / 0.1);
+    --border-strong: rgb(11 11 11 / 0.2);
+    --accent: #256abf;
+    --accent-hover: #1c5cab;
+    --link: #1c5cab;
+    --focus: #2a78d6;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+  }
+}
+
+/* Only the tokens above exist as Tailwind colours; the default palette is removed. */
+@theme inline {
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-raised: var(--surface-raised);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-grid: var(--grid);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-link: var(--link);
+  --color-focus: var(--focus);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-good: var(--status-good);
+  --color-warning: var(--status-warning);
+  --color-serious: var(--status-serious);
+  --color-critical: var(--status-critical);
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html {
+    background-color: var(--page);
+  }
+
+  body {
+    @apply bg-page font-sans text-ink antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility panel {
+  @apply rounded-xl border border-line bg-surface;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-accent text-white hover:bg-accent-hover;
+}
+
+@utility btn-ghost {
+  @apply btn text-ink-secondary hover:bg-raised hover:text-ink;
+}
+
+@utility input {
+  @apply rounded-lg border border-line-strong bg-raised px-3 py-2 text-sm text-ink placeholder:text-ink-muted;
+}
+
+/* Recharts focuses the chart surface for keyboard tooltips; use our ring. */
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
