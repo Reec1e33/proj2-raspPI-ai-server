@@ -5,52 +5,43 @@
 
 ## Context
 
-The chat can use a local model or a cloud model.
-
-- A local model (Ollama with `llama3.2:1b`) costs nothing, and the prompt stays
-  on the Pi. On a Pi CPU it is slow. It can also fail: the model is not pulled,
-  or the container stops because it has no memory.
-- A 4 GB Pi cannot run Ollama next to the rest of the stack.
-- Cloud models (Anthropic, OpenAI-compatible APIs such as Groq) are fast. They
-  need an API key, they cost money, and they can return rate-limit errors.
-
-A user must get an answer when one provider fails. A partial answer must not
-mix text from two models.
+The chat can use a local model or a cloud one, and neither is reliable on its
+own. Ollama with `llama3.2:1b` is free and keeps the prompt on the Pi, but it's
+slow on a Pi CPU, it fails if the model isn't pulled or the container runs out
+of memory, and a 4 GB Pi can't run it next to the rest of the stack. Cloud
+models (Anthropic, or an OpenAI-compatible API like Groq) are fast, but they
+need a key, cost money, and rate-limit. The chat should still answer when one
+provider is down, and an answer must never mix text from two models.
 
 ## Decision
 
-The API sends each chat request through an ordered chain of providers
-([`router.py`](../../api/src/picloud_api/llm/router.py)).
+Send every chat request through an ordered chain of providers
+([`router.py`](../../api/src/picloud_api/llm/router.py)). The default is
+`ollama,anthropic,openai` (`PICLOUD_PROVIDER_ORDER`), and providers with no URL
+or key are skipped. A request can pin which provider goes first.
 
-- The default order is `ollama,anthropic,openai`
-  (`PICLOUD_PROVIDER_ORDER`). The router skips a provider that has no URL or no
-  key.
-- Before the first token, the router retries a transient error 2 times, with
-  exponential backoff and jitter. Transient errors are connection errors,
-  timeouts, HTTP 429 and HTTP 5xx. Then the router tries the next provider.
-- After the first token, the router never changes provider. It sends an SSE
-  `error` event.
-- Each provider has a circuit breaker. It opens after 3 consecutive failed
-  calls, and goes to half-open after 30 s.
-- A `bad_request` error does not count as a circuit failure. A `not_found`
-  error for a model that the caller named does not count either. Thus one
-  client cannot open the circuit for all users.
-- The SDK retries are off. The router owns all retries, so the waits do not
-  multiply.
-- A request can pin the first provider (`provider`). The chain continues after
-  it.
+Before the first token, transient errors (connection errors, timeouts, 429,
+5xx) get 2 retries with exponential backoff and jitter, then the router moves
+on. After the first token it never switches: a failure ends the stream with an
+SSE `error` event. SDK retries are off, so the waits don't stack.
+
+Each provider has a circuit breaker that opens after 3 consecutive failures and
+goes half-open after 30 s. In half-open, exactly one trial request goes through
+and everything else skips the provider until it finishes. A good trial closes
+the circuit and a failed one reopens it for another 30 s. A trial that ends
+without a verdict, because the client went away or the error doesn't count,
+frees the slot for the next request. `bad_request`, and `not_found` for a model
+the caller named, don't count, so one client can't open the circuit for
+everyone.
 
 ## Consequences
 
-- The chat works while Ollama is down, if a cloud key is set.
-- The cloud provider gets requests only when the local model fails, so the
-  cloud cost stays low.
-- Each answer reports the provider that answered, the providers that failed
-  (`fallbacks`), the time to first token and the latency. Prometheus gets the
-  same data (`picloud_provider_fallbacks_total`,
+- With a cloud key set, chat keeps working when Ollama is down, and the cloud
+  only sees traffic when the local model fails.
+- Each answer reports the provider, the `fallbacks`, time to first token, and
+  latency. Prometheus gets the same (`picloud_provider_fallbacks_total`,
   `picloud_provider_circuit_state`).
-- A failure after the first token ends the answer. The user must ask again.
-- In the half-open state, the breaker lets one trial request through. Other
-  requests skip the provider until the trial ends. A cancelled trial frees the
-  slot, so the breaker cannot stay half-open.
-- The circuit state is in memory. A restart of the API closes all circuits.
+- A failure mid-answer just ends it. The user has to ask again.
+- Every failed attempt counts toward the breaker, retries included, so one
+  request that times out three times opens the circuit.
+- Breaker state is in memory. Restarting the API closes every circuit.

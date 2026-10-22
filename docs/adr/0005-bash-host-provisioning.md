@@ -6,48 +6,34 @@
 ## Context
 
 The host needs SSH hardening, a firewall, fail2ban, automatic updates, a static
-IP address, dynamic DNS, journald limits, sysctl values, Docker and a systemd
-unit for the stack.
-
-These are the constraints:
-
-- There is one host. The operator runs the setup on the Pi, after the first SSH
-  login.
-- Raspberry Pi OS Lite has Bash. It does not have Ansible.
-- The operator must see each change before it occurs (dry run).
-- A second run must make no changes.
-- A bad SSH configuration must not lock the operator out of a Pi that has no
-  screen.
-
-Ansible gives idempotent modules and a dry-run mode (`--check`). It also needs
-an installation and a control node, or `ansible-pull` on the Pi.
+IP, dynamic DNS, journald limits, sysctl settings, Docker, and a systemd unit
+for the stack. There's one host, and the setup runs on the Pi itself after the
+first SSH login. Raspberry Pi OS Lite ships Bash, not Ansible. I wanted a dry
+run, a second run that changes nothing, and no way for a bad SSH config to lock
+me out of a Pi with no screen. Ansible covers the first two with `--check` and
+its modules, but it needs installing plus a control node (or `ansible-pull` on
+the Pi).
 
 ## Decision
 
-Use Bash 4.4 or later with a small helper library
-([`common.sh`](../../infra/lib/common.sh)).
-
-- `bootstrap.sh` runs numbered modules (`modules/NN-name.sh`). Options:
-  `--dry-run`, `--only`, `--skip`, `--yes`.
-- `run` prints each command in a dry run, and stops on a failure with the exact
-  command.
-- `install_file` writes a file only when its SHA-256 changes. It keeps a backup
-  of the old file for each run.
-- `validate_or_restore` tests the new file (`sshd -t`, `fail2ban-client --test`,
-  `apt-config dump`, `dockerd --validate`). If the test fails, it puts back the
-  old file.
-- `verify.sh` audits each control without changes.
-- ShellCheck (`-S style`), 37 unit tests and an end-to-end test in Debian 12 and
-  13 containers with systemd check the code.
+Use Bash 4.4+ with a small helper library
+([`common.sh`](../../infra/lib/common.sh)). `bootstrap.sh` runs numbered modules
+(`modules/NN-name.sh`) and takes `--dry-run`, `--only`, `--skip`, and `--yes`.
+`run` prints commands in a dry run and stops on failure with the exact command.
+`install_file` only writes a file when its SHA-256 changes and keeps a backup
+per run. `validate_or_restore` checks the new file (`sshd -t`,
+`fail2ban-client --test`, `apt-config dump`, `dockerd --validate`) and puts the
+old one back if the check fails. `verify.sh` audits everything without changing
+anything.
 
 ## Consequences
 
-- The toolkit needs only Bash, coreutils, `git` and `jq` on the Pi. The `base`
-  module installs `git` and `jq`.
-- A reader sees each command that changes the system.
-- The dry-run and idempotency logic is custom code. It needs its own tests
-  (`infra/tests/run.sh`).
-- The design does not scale to many hosts. For a fleet, Ansible is a better
-  choice.
-- Bash has known risks, for example word splitting. `set -Eeuo pipefail` and
-  ShellCheck decrease these risks.
+- The Pi only needs Bash, coreutils, `git`, and `jq`, and the `base` module
+  installs the last two.
+- Every command that changes the system is right there to read.
+- The dry-run and idempotency logic is my own code, so it needs its own tests:
+  39 unit tests, an end-to-end run in Debian 12 and 13 containers with systemd,
+  and ShellCheck at `-S style`.
+- It doesn't scale past one host. For a fleet, use Ansible.
+- Bash has its usual traps, like word splitting. `set -Eeuo pipefail` and
+  ShellCheck catch most of them.
