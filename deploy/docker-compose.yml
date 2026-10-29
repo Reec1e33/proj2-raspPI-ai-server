@@ -147,7 +147,7 @@ services:
 
   ollama:
     <<: *service
-    image: ollama/ollama:0.40.5
+    image: ollama/ollama:0.40.8
     # Optional: enable with COMPOSE_PROFILES=ollama in .env (default on an 8 GB Pi).
     profiles: [ollama]
     environment:
@@ -170,7 +170,7 @@ services:
 
   prometheus:
     <<: *service
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -248,7 +248,7 @@ services:
 
   loki:
     <<: *service
-    image: grafana/loki:3.7.8
+    image: grafana/loki:3.7.9
     command: ["-config.file=/etc/loki/config.yml", "-config.expand-env=true"]
     environment:
       LOKI_RETENTION_PERIOD: ${LOKI_RETENTION_PERIOD:-168h}
@@ -264,7 +264,7 @@ services:
 
   alloy:
     <<: *service
-    image: grafana/alloy:v1.20.1
+    image: grafana/alloy:v1.21.1
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
