@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build: resolve the locked dependencies into a self-contained virtualenv ----
-FROM python:3.12.15-slim-trixie AS build
+FROM python:3.12.16-slim-trixie AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12.22 /uv /bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
 # ---- runtime: same base image, venv only, non-root ----
-FROM python:3.12.15-slim-trixie
+FROM python:3.12.16-slim-trixie
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
